@@ -1,0 +1,86 @@
+!#bin/bash
+
+#Creating a zip folder of static wesbite in destination folder
+
+zip -r /backup/xfusioncorp_beta.zip /var/www/html/beta/
+
+# Save this backup on another backup server
+
+scp /backup/xfusioncorp_beta.zip clint@stbkp01:/backup/
+
+## it should not ask password, So manually passwordless ssh setup  for target server 
+=========================================================================================
+
+#### ENHANCED SCRIPTS FOR THE SAME TASK 
+
+!/bin/bash
+
+# Description : Creates a zip backup of the static website and copies it to a
+                remote backup server via passwordless SSH.
+
+# Exit immediately if a command fails
+set -euo pipefail  
+
+##VARIABLES
+
+SOURCE_DIR="/var/www/html/beta"
+LOCAL_BACKUP_DIR="/backup"
+BACKUP_FILE="${LOCAL_BACKUP_DIR}/xfusioncorp_beta.zip"
+REMOTE_USER="clint"
+REMOTE_HOST="stbkp01"
+REMOTE_BACKUP_DIR="/backup"
+LOG_FILE="/var/log/backup_beta.log"
+#-----------------------------------------------------------------------------
+
+### Log function used to log the every event into the log file 
+
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"
+}
+#------------------------------------------------------------------------------
+
+### ssh funtion to check and setup passwordless ssh 
+check_ssh_key() {
+    log "Checking passwordless SSH access to ${REMOTE_USER}@${REMOTE_HOST}..."
+    if ssh -o BatchMode=yes -o ConnectTimeout=5 ${REMOTE_USER}@${REMOTE_HOST} 'echo 2>&1' && [ $? -eq 0 ]; then
+        log "Passwordless SSH is already set up."
+    else
+        log "  Passwordless SSH not configured. Setting it up now..."
+        if [ ! -f ~/.ssh/id_rsa.pub ]; then
+            ssh-keygen -t rsa -b 4096 -N "" -f ~/.ssh/id_rsa
+        fi
+        ssh-copy-id -i ~/.ssh/id_rsa.pub ${REMOTE_USER}@${REMOTE_HOST}
+        log " Passwordless SSH setup complete."
+    fi
+}
+
+
+####   Backup Process 
+
+log " Starting website backup process..."
+
+# Create local backup directory if it doesn't exist
+mkdir -p "$LOCAL_BACKUP_DIR"
+
+# Create zip archive of the source directory
+if [ -d "$SOURCE_DIR" ]; then
+    log "Creating zip archive: $BACKUP_FILE"
+    zip -r "$BACKUP_FILE" "$SOURCE_DIR" >/dev/null
+    log " Backup archive created successfully."
+else
+    log " Source directory not found: $SOURCE_DIR"
+    exit 1
+fi
+
+# Ensure passwordless SSH
+check_ssh_key   ##calling the function to check ssh keys
+
+# Copy backup to remote server
+log "Transferring backup to ${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_BACKUP_DIR}"
+scp "$BACKUP_FILE" ${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_BACKUP_DIR}/
+log " Backup transferred successfully."
+log " Backup completed successfully!"
+
+exit 0
+
+##If you want versionised backup files, you can add timestamp in backupfiles
